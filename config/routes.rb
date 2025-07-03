@@ -1,3 +1,5 @@
 Rails.application.routes.draw do
   post "/chat", to: "chats#create"
+  get "/chat", to: "chats#index"
+  get 'chat/conversation/:id', to: 'chats#conversation'
 end
