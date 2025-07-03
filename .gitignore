@@ -1,0 +1,20 @@
+# Ignore environment files
+.env
+.env.*
+
+# Node and Rails
+node_modules/
+log/
+tmp/
+vendor/
+storage/*
+!/storage/.keep
+
+# Build output
+dist/
+coverage/
+
+# OS / Editor specific
+.DS_Store
+.idea/
+.vscode/
