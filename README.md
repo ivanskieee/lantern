@@ -1,24 +1,31 @@
-# README
+Lantern - Like a light in the dark for your thoughts
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+Lantern is a lightweight AI-powered chatbot that lets users ask anything. It acts like a light in your thoughts, offering responses based on your queries.
 
-Things you may want to cover:
+---
 
-* Ruby version
+Features
 
-* System dependencies
+- AI chatbot using Cohere or OpenAI API
+- Fast and minimal frontend built with Vite + React
+- Styled with Tailwind CSS (via CDN)
+- Simple API backend using Ruby on Rails
 
-* Configuration
+---
 
-* Database creation
+Tech Stack
 
-* Database initialization
+- Frontend: Vite + React + Tailwind (CDN)
+- Backend: Ruby on Rails (API only)
+- AI: Cohere or OpenAI API (swappable)
+- Axios for frontend-backend requests
 
-* How to run the test suite
+---
 
-* Services (job queues, cache servers, search engines, etc.)
+Getting Started
 
-* Deployment instructions
+Clone the repository
 
-* ...
+```bash
+git clone https://github.com/ivanskieee/lantern.git
+cd lantern
