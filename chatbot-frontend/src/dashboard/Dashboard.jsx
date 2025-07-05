@@ -36,7 +36,6 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
           setChatHistory(fullChat);
         });
     } else {
-      // Reset state when "Home" or no conversation selected
       setConversationId(null);
       setChatHistory([]);
     }
@@ -60,7 +59,7 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
       });
 
       if (!conversationId && res.data.conversation_id) {
-        setConversationId(res.data.conversation_id); // Set it for new threads
+        setConversationId(res.data.conversation_id);
       }
 
       const botMessage = {

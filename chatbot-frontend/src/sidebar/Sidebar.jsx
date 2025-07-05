@@ -10,6 +10,11 @@ import {
 } from "lucide-react";
 import axios from "axios";
 import { Link } from "react-router-dom";
+import { io } from "socket.io-client";
+
+const socket = io("http://localhost:4000", {
+  transports: ["websocket"],
+});
 
 const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -30,10 +35,37 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
         const res = await axios.get("http://localhost:3000/chat");
         setPromptList(res.data);
       } catch (err) {
-        console.error("Failed to fetch prompt history", err);
+        console.error("❌ Failed to fetch prompt history", err);
       }
     };
+
     fetchPrompts();
+
+    socket.on("connect", () => {
+      console.log("✅ Connected to WebSocket server");
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("❌ WebSocket connection error:", err);
+    });
+
+    socket.on("disconnect", () => {
+      console.warn("⚠️ WebSocket disconnected");
+    });
+
+    socket.on("init_prompt_list", (data) => {
+      console.log("📥 init_prompt_list:", data);
+      setPromptList(data);
+    });
+
+    socket.on("new_prompt", (prompt) => {
+      console.log("⚡ new_prompt received:", prompt);
+      setPromptList((prev) => [prompt, ...prev]);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   return (
@@ -75,7 +107,7 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
           <li>
             <Link
               to="/"
-              onClick={onHomeClick} // 👈 Clear selected prompt on click
+              onClick={onHomeClick}
               className={`flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group ${
                 isCollapsed ? "justify-center" : "space-x-3"
               }`}
