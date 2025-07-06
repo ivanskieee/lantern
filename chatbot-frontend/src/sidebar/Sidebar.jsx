@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Home,
   BarChart3,
@@ -12,13 +12,13 @@ import axios from "axios";
 import { Link } from "react-router-dom";
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:4000", {
-  transports: ["websocket"],
-});
-
 const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [promptList, setPromptList] = useState([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState("Connecting...");
+  const socketRef = useRef(null);
+
   const uniquePromptList = promptList.filter(
     (item, index, self) =>
       index ===
@@ -35,36 +35,79 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
         const res = await axios.get("http://localhost:3000/chat");
         setPromptList(res.data);
       } catch (err) {
-        console.error("❌ Failed to fetch prompt history", err);
+        console.error("Failed to fetch prompt history", err);
       }
     };
 
     fetchPrompts();
 
-    socket.on("connect", () => {
-      console.log("✅ Connected to WebSocket server");
-    });
+    const initializeSocket = () => {
+      socketRef.current = io("http://localhost:4000", {
+        transports: ["websocket", "polling"],
+        upgrade: true,
+        rememberUpgrade: true,
+        timeout: 20000,
+        forceNew: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        maxReconnectionAttempts: 5,
+        randomizationFactor: 0.5,
+      });
 
-    socket.on("connect_error", (err) => {
-      console.error("❌ WebSocket connection error:", err);
-    });
+      socketRef.current.on("connect", () => {
+        console.log("Connected to WebSocket server");
+        setIsConnected(true);
+        setConnectionStatus("System Online");
+      });
 
-    socket.on("disconnect", () => {
-      console.warn("⚠️ WebSocket disconnected");
-    });
+      socketRef.current.on("connect_error", (err) => {
+        console.error("WebSocket connection error:", err);
+        setIsConnected(false);
+        setConnectionStatus("Connection Failed");
+      });
 
-    socket.on("init_prompt_list", (data) => {
-      console.log("📥 init_prompt_list:", data);
-      setPromptList(data);
-    });
+      socketRef.current.on("disconnect", (reason) => {
+        console.warn("WebSocket disconnected:", reason);
+        setIsConnected(false);
+        setConnectionStatus("Disconnected");
+      });
 
-    socket.on("new_prompt", (prompt) => {
-      console.log("⚡ new_prompt received:", prompt);
-      setPromptList((prev) => [prompt, ...prev]);
-    });
+      socketRef.current.on("reconnect", (attemptNumber) => {
+        console.log("Reconnected after", attemptNumber, "attempts");
+        setIsConnected(true);
+        setConnectionStatus("System Online");
+      });
+
+      socketRef.current.on("reconnect_error", (err) => {
+        console.error("Reconnection error:", err);
+        setConnectionStatus("Reconnection Failed");
+      });
+
+      socketRef.current.on("reconnect_failed", () => {
+        console.error("Failed to reconnect");
+        setConnectionStatus("Connection Lost");
+      });
+
+      socketRef.current.on("init_prompt_list", (data) => {
+        console.log("init_prompt_list:", data);
+        setPromptList(data);
+      });
+
+      socketRef.current.on("new_prompt", (prompt) => {
+        console.log("new_prompt received:", prompt);
+        setPromptList((prev) => [prompt, ...prev]);
+      });
+    };
+
+    initializeSocket();
 
     return () => {
-      socket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
   }, []);
 
@@ -192,13 +235,17 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
             isCollapsed ? "justify-center" : "space-x-2"
           }`}
         >
-          <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
+          <div 
+            className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              isConnected ? 'bg-green-500' : 'bg-red-500'
+            }`}
+          ></div>
           <span
             className={`text-xs text-gray-500 transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap ${
               isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
             }`}
           >
-            System Online
+            {connectionStatus}
           </span>
         </div>
       </div>
