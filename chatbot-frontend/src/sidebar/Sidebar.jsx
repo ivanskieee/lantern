@@ -13,7 +13,6 @@ import axios from "axios";
 import { Link } from "react-router-dom";
 import { io } from "socket.io-client";
 
-// Typing animation component
 const TypingText = ({ text, isTyping, onComplete }) => {
   const [displayText, setDisplayText] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -32,14 +31,14 @@ const TypingText = ({ text, isTyping, onComplete }) => {
           if (newIndex >= text.length) {
             clearInterval(intervalRef.current);
             if (onComplete) {
-              setTimeout(onComplete, 500); // Small delay before marking as complete
+              setTimeout(onComplete, 500); 
             }
             return newIndex;
           }
           
           return newIndex;
         });
-      }, 50); // Typing speed (50ms per character)
+      }, 50); 
     } else {
       setDisplayText(text);
     }
@@ -160,12 +159,10 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
         setPromptList(data);
       });
 
-      // Handle when a new prompt starts processing
       socketRef.current.on("prompt_processing", (promptData) => {
         console.log("prompt_processing:", promptData);
         setProcessingPrompts(prev => new Set(prev).add(promptData.id));
         
-        // Add a placeholder prompt that shows processing state
         const processingPrompt = {
           ...promptData,
           message: "Processing your request...",
@@ -175,29 +172,25 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
         setPromptList((prev) => [processingPrompt, ...prev]);
       });
 
-      // Handle when a new prompt is completed
       socketRef.current.on("new_prompt", (prompt) => {
         console.log("new_prompt received:", prompt);
         
-        // Mark this prompt for typing animation
         setTypingPrompts(prev => new Set(prev).add(prompt.id));
         
-        // Replace the processing prompt or add new one
         setPromptList((prev) => {
           const existingIndex = prev.findIndex(p => p.id === prompt.id);
           if (existingIndex !== -1) {
-            // Replace existing processing prompt
+
             const newList = [...prev];
             newList[existingIndex] = { ...prompt, isProcessing: false };
             return newList;
           } else {
-            // Add new prompt
+            
             return [{ ...prompt, isProcessing: false }, ...prev];
           }
         });
       });
 
-      // Handle real-time prompt updates (for streaming responses)
       socketRef.current.on("prompt_update", (updatedPrompt) => {
         console.log("prompt_update received:", updatedPrompt);
         setPromptList((prev) => {
