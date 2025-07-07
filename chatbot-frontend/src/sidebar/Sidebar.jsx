@@ -7,16 +7,67 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquareText,
+  Loader2,
 } from "lucide-react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import { io } from "socket.io-client";
+
+// Typing animation component
+const TypingText = ({ text, isTyping, onComplete }) => {
+  const [displayText, setDisplayText] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (isTyping && text) {
+      setDisplayText("");
+      setCurrentIndex(0);
+      
+      intervalRef.current = setInterval(() => {
+        setCurrentIndex((prevIndex) => {
+          const newIndex = prevIndex + 1;
+          setDisplayText(text.slice(0, newIndex));
+          
+          if (newIndex >= text.length) {
+            clearInterval(intervalRef.current);
+            if (onComplete) {
+              setTimeout(onComplete, 500); // Small delay before marking as complete
+            }
+            return newIndex;
+          }
+          
+          return newIndex;
+        });
+      }, 50); // Typing speed (50ms per character)
+    } else {
+      setDisplayText(text);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [text, isTyping, onComplete]);
+
+  return (
+    <span className="truncate block text-left">
+      {displayText}
+      {isTyping && currentIndex < text.length && (
+        <span className="animate-pulse">|</span>
+      )}
+    </span>
+  );
+};
 
 const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [promptList, setPromptList] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
+  const [processingPrompts, setProcessingPrompts] = useState(new Set());
+  const [typingPrompts, setTypingPrompts] = useState(new Set());
   const socketRef = useRef(null);
 
   const uniquePromptList = promptList.filter(
@@ -27,6 +78,20 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
 
   const toggleSidebar = () => {
     setIsCollapsed(!isCollapsed);
+  };
+
+  const handlePromptTypingComplete = (promptId) => {
+    setTypingPrompts(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(promptId);
+      return newSet;
+    });
+    
+    setProcessingPrompts(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(promptId);
+      return newSet;
+    });
   };
 
   useEffect(() => {
@@ -95,9 +160,55 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
         setPromptList(data);
       });
 
+      // Handle when a new prompt starts processing
+      socketRef.current.on("prompt_processing", (promptData) => {
+        console.log("prompt_processing:", promptData);
+        setProcessingPrompts(prev => new Set(prev).add(promptData.id));
+        
+        // Add a placeholder prompt that shows processing state
+        const processingPrompt = {
+          ...promptData,
+          message: "Processing your request...",
+          isProcessing: true
+        };
+        
+        setPromptList((prev) => [processingPrompt, ...prev]);
+      });
+
+      // Handle when a new prompt is completed
       socketRef.current.on("new_prompt", (prompt) => {
         console.log("new_prompt received:", prompt);
-        setPromptList((prev) => [prompt, ...prev]);
+        
+        // Mark this prompt for typing animation
+        setTypingPrompts(prev => new Set(prev).add(prompt.id));
+        
+        // Replace the processing prompt or add new one
+        setPromptList((prev) => {
+          const existingIndex = prev.findIndex(p => p.id === prompt.id);
+          if (existingIndex !== -1) {
+            // Replace existing processing prompt
+            const newList = [...prev];
+            newList[existingIndex] = { ...prompt, isProcessing: false };
+            return newList;
+          } else {
+            // Add new prompt
+            return [{ ...prompt, isProcessing: false }, ...prev];
+          }
+        });
+      });
+
+      // Handle real-time prompt updates (for streaming responses)
+      socketRef.current.on("prompt_update", (updatedPrompt) => {
+        console.log("prompt_update received:", updatedPrompt);
+        setPromptList((prev) => {
+          const existingIndex = prev.findIndex(p => p.id === updatedPrompt.id);
+          if (existingIndex !== -1) {
+            const newList = [...prev];
+            newList[existingIndex] = { ...updatedPrompt, isProcessing: false };
+            return newList;
+          }
+          return prev;
+        });
       });
     };
 
@@ -115,13 +226,13 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
     <div
       className={`${
         isCollapsed ? "w-16" : "w-64"
-      } h-screen bg-white border-r border-gray-200 flex flex-col transition-all duration-500 ease-in-out`}
+      } h-screen bg-white border-r border-gray-200 flex flex-col transition-all duration-500 ease-in-out flex-shrink-0 overflow-hidden`}
     >
-      {/* Sidebar Header */}
+      {/* Fixed Sidebar Header */}
       <div
         className={`${
           isCollapsed ? "p-4" : "p-6"
-        } border-b border-gray-200 transition-all duration-500 ease-in-out`}
+        } border-b border-gray-200 transition-all duration-500 ease-in-out flex-shrink-0`}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3 min-w-0">
@@ -144,100 +255,136 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4">
-        <ul className="space-y-2">
-          <li>
-            <Link
-              to="/"
-              onClick={onHomeClick}
-              className={`flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group ${
-                isCollapsed ? "justify-center" : "space-x-3"
-              }`}
-            >
-              <Home className="w-5 h-5 text-gray-400 group-hover:text-gray-600 flex-shrink-0" />
-              <span
-                className={`text-sm font-medium transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap ${
-                  isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+      {/* Navigation - Scrollable */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Fixed Navigation Items */}
+        <div className="p-4 flex-shrink-0">
+          <ul className="space-y-2">
+            <li>
+              <Link
+                to="/"
+                onClick={onHomeClick}
+                className={`flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group ${
+                  isCollapsed ? "justify-center" : "space-x-3"
                 }`}
               >
-                Home
-              </span>
-            </Link>
-          </li>
-          <li>
-            <a
-              href="#"
-              className={`flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group bg-gray-50 ${
-                isCollapsed ? "justify-center" : "space-x-3"
-              }`}
-            >
-              <BarChart3 className="w-5 h-5 text-gray-600 flex-shrink-0" />
-              <span
-                className={`text-sm font-medium transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap ${
-                  isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
-                }`}
-              >
-                Dashboard
-              </span>
-            </a>
-          </li>
-          <li>
-            <a
-              href="#"
-              className={`flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group ${
-                isCollapsed ? "justify-center" : "space-x-3"
-              }`}
-            >
-              <Settings className="w-5 h-5 text-gray-400 group-hover:text-gray-600 flex-shrink-0" />
-              <span
-                className={`text-sm font-medium transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap ${
-                  isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
-                }`}
-              >
-                Settings
-              </span>
-            </a>
-          </li>
-        </ul>
-        <div className="mt-6">
-          {!isCollapsed && (
-            <h2 className="text-xs text-gray-400 uppercase mb-2">
-              Prompt History
-            </h2>
-          )}
-          <ul className="space-y-1">
-            {uniquePromptList.map((item) => (
-              <li key={item.id}>
-                <button
-                  onClick={() => onSelectPrompt(item)}
-                  className={`flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200 ${
-                    isCollapsed ? "justify-center" : "space-x-2"
+                <Home className="w-5 h-5 text-gray-400 group-hover:text-gray-600 flex-shrink-0" />
+                <span
+                  className={`text-sm font-medium transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap ${
+                    isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
                   }`}
                 >
-                  <MessageSquareText className="w-4 h-4 text-gray-400" />
-                  {!isCollapsed && (
-                    <span className="truncate max-w-[150px] text-left">
-                      {item.message.slice(0, 30)}...
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
+                  Home
+                </span>
+              </Link>
+            </li>
+            <li>
+              <a
+                href="#"
+                className={`flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group bg-gray-50 ${
+                  isCollapsed ? "justify-center" : "space-x-3"
+                }`}
+              >
+                <BarChart3 className="w-5 h-5 text-gray-600 flex-shrink-0" />
+                <span
+                  className={`text-sm font-medium transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap ${
+                    isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                  }`}
+                >
+                  Dashboard
+                </span>
+              </a>
+            </li>
+            <li>
+              <a
+                href="#"
+                className={`flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group ${
+                  isCollapsed ? "justify-center" : "space-x-3"
+                }`}
+              >
+                <Settings className="w-5 h-5 text-gray-400 group-hover:text-gray-600 flex-shrink-0" />
+                <span
+                  className={`text-sm font-medium transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap ${
+                    isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                  }`}
+                >
+                  Settings
+                </span>
+              </a>
+            </li>
           </ul>
         </div>
-      </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-gray-200">
+        {/* Prompt History Section - Scrollable */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {!isCollapsed && (
+            <div className="px-4 pb-2 flex-shrink-0">
+              <h2 className="text-xs text-gray-400 uppercase">
+                Prompt History
+              </h2>
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto px-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
+            <ul className="space-y-1 pb-4">
+              {uniquePromptList.map((item) => {
+                const isProcessing = processingPrompts.has(item.id) || item.isProcessing;
+                const isTyping = typingPrompts.has(item.id);
+                const displayText = item.message.slice(0, 30) + (item.message.length > 30 ? "..." : "");
+                
+                return (
+                  <li key={item.id} className={`transform transition-all duration-500 ease-in-out ${
+                    isProcessing ? 'animate-pulse' : 'animate-none'
+                  }`}>
+                    <button
+                      onClick={() => !isProcessing && onSelectPrompt(item)}
+                      disabled={isProcessing}
+                      className={`flex items-center w-full px-3 py-2 text-sm rounded-lg transition-all duration-200 ${
+                        isCollapsed ? "justify-center" : "justify-start space-x-2"
+                      } ${
+                        isProcessing 
+                          ? "text-gray-400 bg-gray-50 cursor-not-allowed" 
+                          : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      {isProcessing ? (
+                        <Loader2 className="w-4 h-4 text-gray-400 flex-shrink-0 animate-spin" />
+                      ) : (
+                        <MessageSquareText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      )}
+                      {!isCollapsed && (
+                        <div className="flex-1 min-w-0 text-left">
+                          {isTyping && !isProcessing ? (
+                            <TypingText
+                              text={displayText}
+                              isTyping={true}
+                              onComplete={() => handlePromptTypingComplete(item.id)}
+                            />
+                          ) : (
+                            <span className="truncate block text-left">
+                              {displayText}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Fixed Footer */}
+      <div className="p-4 border-t border-gray-200 flex-shrink-0">
         <div
           className={`flex items-center transition-all duration-500 ease-in-out ${
             isCollapsed ? "justify-center" : "space-x-2"
           }`}
         >
-          <div 
+          <div
             className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              isConnected ? 'bg-green-500' : 'bg-red-500'
+              isConnected ? "bg-green-500" : "bg-red-500"
             }`}
           ></div>
           <span

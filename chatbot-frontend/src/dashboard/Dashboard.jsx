@@ -97,9 +97,9 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
   };
 
   return (
-    <div className="flex-1 bg-gray-50 min-h-screen flex flex-col">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-8 py-6">
+    <div className="flex-1 bg-gray-50 h-screen flex flex-col overflow-hidden">
+      {/* Fixed Header */}
+      <div className="bg-white border-b border-gray-200 px-8 py-6 flex-shrink-0">
         <div className="flex items-center space-x-3">
           <div className="relative w-9 h-11 bg-gradient-to-b from-gray-800 rounded-lg flex items-center justify-center border border-gray-600 shadow-lg">
             {/* Central sparkle behind the icon */}
@@ -178,10 +178,10 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
         `}</style>
       </div>
 
-      {/* Chat Container */}
-      <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full p-6">
-        {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto space-y-6 mb-6">
+      {/* Main Content Area - Scrollable */}
+      <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full p-6 overflow-hidden">
+        {/* Messages Area - Scrollable */}
+        <div className="flex-1 overflow-y-auto space-y-6 mb-6 pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
           {chatHistory.length === 0 ? (
             <div className="text-center py-16">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -233,7 +233,7 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
                         : "bg-white text-gray-900 border border-gray-200 rounded-bl-sm"
                     }`}
                   >
-                    <p className="text-sm leading-relaxed whitespace-pre-line">
+                    <p className="text-sm leading-relaxed whitespace-pre-line break-words">
                       {msg.content}
                     </p>
                     <p
@@ -276,8 +276,8 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
           )}
         </div>
 
-        {/* Input Area */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+        {/* Fixed Input Area */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex-shrink-0">
           <div className="flex items-end space-x-3">
             <div className="flex-1 relative">
               <textarea
