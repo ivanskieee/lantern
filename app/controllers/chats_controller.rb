@@ -70,6 +70,34 @@ class ChatsController < ApplicationController
     end
   end
 
+  def destroy
+    begin
+      prompt = ChatPrompt.find(params[:id])
+      conversation_id = prompt.conversation_id
+      
+      # Delete the specific prompt
+      prompt.destroy
+      
+      puts "Deleted prompt with id: #{params[:id]}"
+      
+      # Broadcast deletion to WebSocket clients
+      broadcast_deletion_to_websocket(params[:id])
+      
+      render json: { 
+        message: 'Prompt deleted successfully',
+        deleted_id: params[:id],
+        conversation_id: conversation_id
+      }, status: :ok
+      
+    rescue ActiveRecord::RecordNotFound
+      puts "Prompt not found with id: #{params[:id]}"
+      render json: { error: 'Prompt not found' }, status: :not_found
+    rescue => e
+      puts "Error deleting prompt: #{e.message}"
+      render json: { error: 'Failed to delete prompt' }, status: :internal_server_error
+    end
+  end
+
   private
 
   def broadcast_to_websocket(prompt)
@@ -104,6 +132,38 @@ class ChatsController < ApplicationController
       puts "WebSocket server connection refused: #{e.message}"
     rescue => e
       puts "WebSocket broadcast failed: #{e.message}"
+    end
+  end
+
+  def broadcast_deletion_to_websocket(prompt_id)
+    uri = URI("http://localhost:4000/broadcast-delete")
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.read_timeout = 5 
+    http.open_timeout = 5 
+    
+    request = Net::HTTP::Post.new(uri.path, 'Content-Type' => 'application/json')
+    request.body = {
+      deleted_id: prompt_id,
+      action: 'delete'
+    }.to_json
+
+    puts "Sending DELETE broadcast to WebSocket server with body: #{request.body}"
+
+    begin
+      response = http.request(request)
+      puts "WebSocket delete broadcast responded with status: #{response.code}"
+      
+      if response.code == '200'
+        puts "Successfully broadcasted deletion to WebSocket clients"
+      else
+        puts "WebSocket delete broadcast failed with status: #{response.code}, body: #{response.body}"
+      end
+    rescue Net::TimeoutError => e
+      puts "WebSocket delete broadcast timeout: #{e.message}"
+    rescue Errno::ECONNREFUSED => e
+      puts "WebSocket delete broadcast connection refused: #{e.message}"
+    rescue => e
+      puts "WebSocket delete broadcast failed: #{e.message}"
     end
   end
 end

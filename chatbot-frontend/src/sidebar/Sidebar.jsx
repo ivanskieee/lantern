@@ -8,6 +8,7 @@ import {
   ChevronRight,
   MessageSquareText,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import axios from "axios";
 import { Link } from "react-router-dom";
@@ -67,6 +68,7 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
   const [processingPrompts, setProcessingPrompts] = useState(new Set());
   const [typingPrompts, setTypingPrompts] = useState(new Set());
+  const [deletingPrompts, setDeletingPrompts] = useState(new Set());
   const socketRef = useRef(null);
 
   const uniquePromptList = promptList.filter(
@@ -91,6 +93,46 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
       newSet.delete(promptId);
       return newSet;
     });
+  };
+
+  const handleDeletePrompt = async (promptId, event) => {
+    event.stopPropagation(); // Prevent triggering the select prompt action
+    
+    if (deletingPrompts.has(promptId)) {
+      return; // Already deleting
+    }
+
+    try {
+      setDeletingPrompts(prev => new Set(prev).add(promptId));
+      
+      await axios.delete(`http://localhost:3000/chat/${promptId}`);
+      
+      // Remove from local state
+      setPromptList(prev => prev.filter(prompt => prompt.id !== promptId));
+      
+      // Clean up other states
+      setProcessingPrompts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(promptId);
+        return newSet;
+      });
+      
+      setTypingPrompts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(promptId);
+        return newSet;
+      });
+      
+    } catch (error) {
+      console.error("Failed to delete prompt:", error);
+      // You might want to show a toast notification here
+    } finally {
+      setDeletingPrompts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(promptId);
+        return newSet;
+      });
+    }
   };
 
   useEffect(() => {
@@ -180,12 +222,10 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
         setPromptList((prev) => {
           const existingIndex = prev.findIndex(p => p.id === prompt.id);
           if (existingIndex !== -1) {
-
             const newList = [...prev];
             newList[existingIndex] = { ...prompt, isProcessing: false };
             return newList;
           } else {
-            
             return [{ ...prompt, isProcessing: false }, ...prev];
           }
         });
@@ -202,6 +242,12 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
           }
           return prev;
         });
+      });
+
+      // Listen for delete events from other clients
+      socketRef.current.on("prompt_deleted", (deletedPromptId) => {
+        console.log("prompt_deleted received:", deletedPromptId);
+        setPromptList((prev) => prev.filter(prompt => prompt.id !== deletedPromptId));
       });
     };
 
@@ -322,44 +368,60 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
               {uniquePromptList.map((item) => {
                 const isProcessing = processingPrompts.has(item.id) || item.isProcessing;
                 const isTyping = typingPrompts.has(item.id);
+                const isDeleting = deletingPrompts.has(item.id);
                 const displayText = item.message.slice(0, 30) + (item.message.length > 30 ? "..." : "");
                 
                 return (
                   <li key={item.id} className={`transform transition-all duration-500 ease-in-out ${
                     isProcessing ? 'animate-pulse' : 'animate-none'
-                  }`}>
-                    <button
-                      onClick={() => !isProcessing && onSelectPrompt(item)}
-                      disabled={isProcessing}
-                      className={`flex items-center w-full px-3 py-2 text-sm rounded-lg transition-all duration-200 ${
-                        isCollapsed ? "justify-center" : "justify-start space-x-2"
-                      } ${
-                        isProcessing 
-                          ? "text-gray-400 bg-gray-50 cursor-not-allowed" 
-                          : "text-gray-700 hover:bg-gray-100"
-                      }`}
-                    >
-                      {isProcessing ? (
-                        <Loader2 className="w-4 h-4 text-gray-400 flex-shrink-0 animate-spin" />
-                      ) : (
-                        <MessageSquareText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  } ${isDeleting ? 'opacity-50' : 'opacity-100'}`}>
+                    <div className="group relative">
+                      <button
+                        onClick={() => !isProcessing && !isDeleting && onSelectPrompt(item)}
+                        disabled={isProcessing || isDeleting}
+                        className={`flex items-center w-full px-3 py-2 text-sm rounded-lg transition-all duration-200 ${
+                          isCollapsed ? "justify-center" : "justify-start space-x-2"
+                        } ${
+                          isProcessing || isDeleting
+                            ? "text-gray-400 bg-gray-50 cursor-not-allowed" 
+                            : "text-gray-700 hover:bg-gray-100"
+                        } ${!isCollapsed ? "pr-8" : ""}`}
+                      >
+                        {isProcessing ? (
+                          <Loader2 className="w-4 h-4 text-gray-400 flex-shrink-0 animate-spin" />
+                        ) : isDeleting ? (
+                          <Loader2 className="w-4 h-4 text-red-400 flex-shrink-0 animate-spin" />
+                        ) : (
+                          <MessageSquareText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        )}
+                        {!isCollapsed && (
+                          <div className="flex-1 min-w-0 text-left">
+                            {isTyping && !isProcessing && !isDeleting ? (
+                              <TypingText
+                                text={displayText}
+                                isTyping={true}
+                                onComplete={() => handlePromptTypingComplete(item.id)}
+                              />
+                            ) : (
+                              <span className="truncate block text-left">
+                                {displayText}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                      
+                      {/* Delete Button - Only show when not collapsed and not processing */}
+                      {!isCollapsed && !isProcessing && !isDeleting && (
+                        <button
+                          onClick={(e) => handleDeletePrompt(item.id, e)}
+                          className="absolute right-2 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-red-100 rounded-md"
+                          title="Delete prompt"
+                        >
+                          <Trash2 className="w-3 h-3 text-red-500 hover:text-red-700" />
+                        </button>
                       )}
-                      {!isCollapsed && (
-                        <div className="flex-1 min-w-0 text-left">
-                          {isTyping && !isProcessing ? (
-                            <TypingText
-                              text={displayText}
-                              isTyping={true}
-                              onComplete={() => handlePromptTypingComplete(item.id)}
-                            />
-                          ) : (
-                            <span className="truncate block text-left">
-                              {displayText}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </button>
+                    </div>
                   </li>
                 );
               })}

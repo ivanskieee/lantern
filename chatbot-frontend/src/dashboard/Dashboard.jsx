@@ -1,6 +1,53 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Send, MessageCircle, Sparkles } from "lucide-react";
 import axios from "axios";
+
+const TypingText = ({ text, isTyping, onComplete }) => {
+  const [displayText, setDisplayText] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (isTyping && text) {
+      setDisplayText("");
+      setCurrentIndex(0);
+
+      intervalRef.current = setInterval(() => {
+        setCurrentIndex((prevIndex) => {
+          const newIndex = prevIndex + 1;
+          setDisplayText(text.slice(0, newIndex));
+
+          if (newIndex >= text.length) {
+            clearInterval(intervalRef.current);
+            if (onComplete) {
+              setTimeout(onComplete, 500);
+            }
+            return newIndex;
+          }
+
+          return newIndex;
+        });
+      }, 30); 
+    } else {
+      setDisplayText(text);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [text, isTyping, onComplete]);
+
+  return (
+    <span className="whitespace-pre-line break-words">
+      {displayText}
+      {isTyping && currentIndex < text.length && (
+        <span className="animate-pulse">|</span>
+      )}
+    </span>
+  );
+};
 
 const Dashboard = ({ selectedChat, onNewChat }) => {
   const [message, setMessage] = useState("");
@@ -8,6 +55,7 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
   const [loading, setLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
   const [conversationId, setConversationId] = useState(null);
+  const [typingMessages, setTypingMessages] = useState(new Set());
 
   useEffect(() => {
     if (selectedChat?.conversation_id) {
@@ -24,11 +72,14 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
                 type: "user",
                 content: chat.message,
                 timestamp: new Date(chat.created_at),
+                id: `user-${chat.id}`,
               },
               {
                 type: "bot",
                 content: chat.reply,
                 timestamp: new Date(chat.created_at),
+                id: `bot-${chat.id}`,
+                isTyping: false, 
               },
             ])
             .flat();
@@ -41,6 +92,20 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
     }
   }, [selectedChat?.conversation_id]);
 
+  const handleTypingComplete = (messageId) => {
+    setTypingMessages((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(messageId);
+      return newSet;
+    });
+
+    setChatHistory((prev) =>
+      prev.map((msg) =>
+        msg.id === messageId ? { ...msg, isTyping: false } : msg
+      )
+    );
+  };
+
   const handleSend = async () => {
     if (!message.trim()) return;
 
@@ -48,6 +113,7 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
       type: "user",
       content: message,
       timestamp: new Date(),
+      id: `user-${Date.now()}`,
     };
     setChatHistory((prev) => [...prev, userMessage]);
 
@@ -62,12 +128,19 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
         setConversationId(res.data.conversation_id);
       }
 
+      const botMessageId = `bot-${Date.now()}`;
       const botMessage = {
         type: "bot",
         content: res.data.reply,
         timestamp: new Date(),
+        id: botMessageId,
+        isTyping: true, 
       };
+
       setChatHistory((prev) => [...prev, botMessage]);
+
+      setTypingMessages((prev) => new Set(prev).add(botMessageId));
+
       setReply(res.data.reply);
 
       if (!conversationId && res.data.conversation_id) {
@@ -80,8 +153,15 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
           conversation_id: res.data.conversation_id,
         });
       }
-      
     } catch (error) {
+      const errorMessage = {
+        type: "bot",
+        content: "Something went wrong!",
+        timestamp: new Date(),
+        id: `error-${Date.now()}`,
+        isTyping: false,
+      };
+      setChatHistory((prev) => [...prev, errorMessage]);
       setReply("Something went wrong!");
     } finally {
       setLoading(false);
@@ -198,7 +278,7 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
           ) : (
             chatHistory.map((msg, index) => (
               <div
-                key={index}
+                key={msg.id || index}
                 className={`flex ${
                   msg.type === "user" ? "justify-end" : "justify-start"
                 }`}
@@ -233,8 +313,18 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
                         : "bg-white text-gray-900 border border-gray-200 rounded-bl-sm"
                     }`}
                   >
-                    <p className="text-sm leading-relaxed whitespace-pre-line break-words">
-                      {msg.content}
+                    <p className="text-sm leading-relaxed">
+                      {msg.type === "bot" && msg.isTyping === true ? (
+                        <TypingText
+                          text={msg.content}
+                          isTyping={true}
+                          onComplete={() => handleTypingComplete(msg.id)}
+                        />
+                      ) : (
+                        <span className="whitespace-pre-line break-words">
+                          {msg.content}
+                        </span>
+                      )}
                     </p>
                     <p
                       className={`text-xs mt-2 ${
