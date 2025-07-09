@@ -10,6 +10,7 @@ Features
 - Fast and minimal frontend built with Vite + React
 - Styled with Tailwind CSS (via CDN)
 - Simple API backend using Ruby on Rails
+- Real-time prompt updates using Node.js + Socket.IO
 
 ---
 
@@ -17,6 +18,7 @@ Tech Stack
 
 - Frontend: Vite + React + Tailwind (CDN)
 - Backend: Ruby on Rails (API only)
+- Real-time: Node.js + Socket.IO
 - AI: Cohere or OpenAI API (swappable)
 - Axios for frontend-backend requests
 
