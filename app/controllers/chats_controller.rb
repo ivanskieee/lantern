@@ -74,13 +74,10 @@ class ChatsController < ApplicationController
     begin
       prompt = ChatPrompt.find(params[:id])
       conversation_id = prompt.conversation_id
-      
-      # Delete the specific prompt
       prompt.destroy
       
       puts "Deleted prompt with id: #{params[:id]}"
       
-      # Broadcast deletion to WebSocket clients
       broadcast_deletion_to_websocket(params[:id])
       
       render json: { 

@@ -49,22 +49,24 @@ const TypingText = ({ text, isTyping, onComplete }) => {
   );
 };
 
-const Dashboard = ({ selectedChat, onNewChat }) => {
+const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarTypingPrompts }) => {
   const [message, setMessage] = useState("");
-  const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
   const [conversationId, setConversationId] = useState(null);
   const [typingMessages, setTypingMessages] = useState(new Set());
+  const [dashboardIsBusy, setDashboardIsBusy] = useState(false);
+
+  const isAnyMessageTyping = typingMessages.size > 0;
+  const isSidebarProcessing = sidebarProcessingPrompts.size > 0 || sidebarTypingPrompts.size > 0;
+  const isSystemBusy = dashboardIsBusy || isAnyMessageTyping || isSidebarProcessing;
 
   useEffect(() => {
     if (selectedChat?.conversation_id) {
       setConversationId(selectedChat.conversation_id);
 
       axios
-        .get(
-          `http://localhost:3000/chat/conversation/${selectedChat.conversation_id}`
-        )
+        .get(`http://localhost:3000/chat/conversation/${selectedChat.conversation_id}`)
         .then((res) => {
           const fullChat = res.data
             .map((chat) => [
@@ -85,7 +87,8 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
             .flat();
 
           setChatHistory(fullChat);
-        });
+        })
+        .catch(err => console.error('Error loading chat history:', err));
     } else {
       setConversationId(null);
       setChatHistory([]);
@@ -108,6 +111,12 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
 
   const handleSend = async () => {
     if (!message.trim()) return;
+    
+    if (isSystemBusy) {
+      return;
+    }
+
+    setDashboardIsBusy(true);
 
     const userMessage = {
       type: "user",
@@ -115,12 +124,17 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
       timestamp: new Date(),
       id: `user-${Date.now()}`,
     };
+    
+    const currentMessage = message;
+    setMessage("");
+    
     setChatHistory((prev) => [...prev, userMessage]);
 
     setLoading(true);
+    
     try {
       const res = await axios.post("http://localhost:3000/chat", {
-        message,
+        message: currentMessage,
         conversation_id: conversationId,
       });
 
@@ -129,6 +143,9 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
       }
 
       const botMessageId = `bot-${Date.now()}`;
+      
+      setTypingMessages((prev) => new Set(prev).add(botMessageId));
+      
       const botMessage = {
         type: "bot",
         content: res.data.reply,
@@ -139,21 +156,17 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
 
       setChatHistory((prev) => [...prev, botMessage]);
 
-      setTypingMessages((prev) => new Set(prev).add(botMessageId));
-
-      setReply(res.data.reply);
-
-      if (!conversationId && res.data.conversation_id) {
-        setConversationId(res.data.conversation_id);
-
+      if (!conversationId && res.data.conversation_id && onNewChat) {
         onNewChat({
-          message,
+          message: currentMessage,
           reply: res.data.reply,
           created_at: new Date(),
           conversation_id: res.data.conversation_id,
         });
       }
+      
     } catch (error) {
+      console.error('Error sending message:', error);
       const errorMessage = {
         type: "bot",
         content: "Something went wrong!",
@@ -162,10 +175,10 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
         isTyping: false,
       };
       setChatHistory((prev) => [...prev, errorMessage]);
-      setReply("Something went wrong!");
     } finally {
       setLoading(false);
-      setMessage("");
+
+      setDashboardIsBusy(false);
     }
   };
 
@@ -176,6 +189,32 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
     }
   };
 
+  const getStatusMessage = () => {
+    if (isSidebarProcessing) {
+      return "System is processing other requests...";
+    }
+    if (isAnyMessageTyping) {
+      return "Please wait while I'm typing...";
+    }
+    if (dashboardIsBusy) {
+      return "Processing your request...";
+    }
+    return "Press Enter to send • Shift+Enter for new line";
+  };
+
+  const getPlaceholder = () => {
+    if (isSidebarProcessing) {
+      return "System is processing other requests...";
+    }
+    if (isAnyMessageTyping) {
+      return "Please wait while I'm typing...";
+    }
+    if (dashboardIsBusy) {
+      return "Processing your request...";
+    }
+    return "Type your message here...";
+  };
+
   return (
     <div className="flex-1 bg-gray-50 h-screen flex flex-col overflow-hidden">
       {/* Fixed Header */}
@@ -184,13 +223,7 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
           <div className="relative w-9 h-11 bg-gradient-to-b from-gray-800 rounded-lg flex items-center justify-center border border-gray-600 shadow-lg">
             {/* Central sparkle behind the icon */}
             <div className="absolute inset-0 flex items-center justify-center">
-              <div
-                className="w-1.5 h-1.5 bg-white rounded-full opacity-0"
-                style={{
-                  animation: "twinkle 3s ease-in-out infinite",
-                  animationDelay: "0s",
-                }}
-              ></div>
+              <div className="w-1.5 h-1.5 bg-white rounded-full opacity-0 animate-pulse"></div>
             </div>
 
             {/* Top cap with handle */}
@@ -209,14 +242,8 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
             <div className="absolute left-2 top-1.5 w-0.5 h-7 bg-gray-600 opacity-30"></div>
             <div className="absolute right-2 top-1.5 w-0.5 h-7 bg-gray-600 opacity-30"></div>
 
-            {/* Sparkles icon - with subtle animation */}
-            <Sparkles
-              className="w-4 h-4 text-white relative z-10 drop-shadow-lg"
-              style={{
-                animation: "sparkle 3s ease-in-out infinite",
-                animationDelay: "0s",
-              }}
-            />
+            {/* Sparkles icon */}
+            <Sparkles className="w-4 h-4 text-white relative z-10 drop-shadow-lg" />
 
             {/* Bottom cap */}
             <div className="absolute -bottom-0.5 left-1/2 transform -translate-x-1/2 w-6 h-1 bg-gray-900 rounded-b border border-gray-600"></div>
@@ -228,34 +255,6 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
             </p>
           </div>
         </div>
-
-        <style jsx>{`
-          @keyframes twinkle {
-            0%,
-            100% {
-              opacity: 0;
-              transform: scale(0.8);
-            }
-            50% {
-              opacity: 0.8;
-              transform: scale(1.2);
-              box-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
-            }
-          }
-
-          @keyframes sparkle {
-            0%,
-            100% {
-              opacity: 0.8;
-              transform: scale(1);
-            }
-            50% {
-              opacity: 1;
-              transform: scale(1.05);
-              filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.5));
-            }
-          }
-        `}</style>
       </div>
 
       {/* Main Content Area - Scrollable */}
@@ -372,17 +371,20 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
             <div className="flex-1 relative">
               <textarea
                 rows="1"
-                className="w-full resize-none border-0 bg-transparent focus:outline-none placeholder-gray-500 text-gray-900 text-sm leading-relaxed"
+                className={`w-full resize-none border-0 bg-transparent focus:outline-none placeholder-gray-500 text-gray-900 text-sm leading-relaxed ${
+                  isSystemBusy ? 'opacity-50' : ''
+                }`}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Type your message here..."
+                placeholder={getPlaceholder()}
                 style={{ minHeight: "24px", maxHeight: "120px" }}
+                disabled={isSystemBusy}
               />
             </div>
             <button
               onClick={handleSend}
-              disabled={loading || !message.trim()}
+              disabled={loading || !message.trim() || isSystemBusy}
               className="p-2.5 bg-black hover:bg-gray-800 disabled:bg-gray-300 text-white rounded-xl transition-colors disabled:cursor-not-allowed flex-shrink-0"
             >
               <Send className="w-4 h-4" />
@@ -390,11 +392,15 @@ const Dashboard = ({ selectedChat, onNewChat }) => {
           </div>
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
             <p className="text-xs text-gray-500">
-              Press Enter to send • Shift+Enter for new line
+              {getStatusMessage()}
             </p>
             <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-xs text-gray-500">Connected</span>
+              <div className={`w-2 h-2 rounded-full ${
+                isSystemBusy ? 'bg-yellow-500' : 'bg-green-500'
+              }`}></div>
+              <span className="text-xs text-gray-500">
+                {isSystemBusy ? 'Busy...' : 'Ready'}
+              </span>
             </div>
           </div>
         </div>

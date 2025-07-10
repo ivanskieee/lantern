@@ -11,7 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import axios from "axios";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 
 const TypingText = ({ text, isTyping, onComplete }) => {
@@ -61,7 +61,14 @@ const TypingText = ({ text, isTyping, onComplete }) => {
   );
 };
 
-const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
+const Sidebar = ({ 
+  onSelectPrompt, 
+  onHomeClick, 
+  onProcessingPromptsChange, 
+  onTypingPromptsChange,
+  selectedPromptId 
+}) => {
+  const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [promptList, setPromptList] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
@@ -69,6 +76,7 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
   const [processingPrompts, setProcessingPrompts] = useState(new Set());
   const [typingPrompts, setTypingPrompts] = useState(new Set());
   const [deletingPrompts, setDeletingPrompts] = useState(new Set());
+  const [completedTypingPrompts, setCompletedTypingPrompts] = useState(new Set());
   const socketRef = useRef(null);
 
   const uniquePromptList = promptList.filter(
@@ -81,25 +89,48 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
     setIsCollapsed(!isCollapsed);
   };
 
-  const handlePromptTypingComplete = (promptId) => {
-    setTypingPrompts(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(promptId);
-      return newSet;
-    });
+  const handleHomeClick = () => {
+    if (onHomeClick) {
+      onHomeClick(); 
+    }
     
-    setProcessingPrompts(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(promptId);
-      return newSet;
-    });
+    updateProcessingPrompts(new Set());
+    updateTypingPrompts(new Set());
+    
+    navigate('/');
+  };
+
+  const updateProcessingPrompts = (newProcessingPrompts) => {
+    setProcessingPrompts(newProcessingPrompts);
+    if (onProcessingPromptsChange) {
+      onProcessingPromptsChange(newProcessingPrompts);
+    }
+  };
+
+  const updateTypingPrompts = (newTypingPrompts) => {
+    setTypingPrompts(newTypingPrompts);
+    if (onTypingPromptsChange) {
+      onTypingPromptsChange(newTypingPrompts);
+    }
+  };
+
+  const handlePromptTypingComplete = (promptId) => {
+    setCompletedTypingPrompts(prev => new Set(prev).add(promptId));
+    
+    const newTypingPrompts = new Set(typingPrompts);
+    newTypingPrompts.delete(promptId);
+    updateTypingPrompts(newTypingPrompts);
+    
+    const newProcessingPrompts = new Set(processingPrompts);
+    newProcessingPrompts.delete(promptId);
+    updateProcessingPrompts(newProcessingPrompts);
   };
 
   const handleDeletePrompt = async (promptId, event) => {
-    event.stopPropagation(); // Prevent triggering the select prompt action
+    event.stopPropagation();
     
     if (deletingPrompts.has(promptId)) {
-      return; // Already deleting
+      return; 
     }
 
     try {
@@ -107,17 +138,18 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
       
       await axios.delete(`http://localhost:3000/chat/${promptId}`);
       
-      // Remove from local state
       setPromptList(prev => prev.filter(prompt => prompt.id !== promptId));
       
-      // Clean up other states
-      setProcessingPrompts(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(promptId);
-        return newSet;
-      });
+      const newProcessingPrompts = new Set(processingPrompts);
+      newProcessingPrompts.delete(promptId);
+      updateProcessingPrompts(newProcessingPrompts);
       
-      setTypingPrompts(prev => {
+      const newTypingPrompts = new Set(typingPrompts);
+      newTypingPrompts.delete(promptId);
+      updateTypingPrompts(newTypingPrompts);
+      
+      // Also remove from completed typing prompts
+      setCompletedTypingPrompts(prev => {
         const newSet = new Set(prev);
         newSet.delete(promptId);
         return newSet;
@@ -125,7 +157,6 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
       
     } catch (error) {
       console.error("Failed to delete prompt:", error);
-      // You might want to show a toast notification here
     } finally {
       setDeletingPrompts(prev => {
         const newSet = new Set(prev);
@@ -203,7 +234,9 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
 
       socketRef.current.on("prompt_processing", (promptData) => {
         console.log("prompt_processing:", promptData);
-        setProcessingPrompts(prev => new Set(prev).add(promptData.id));
+        const newProcessingPrompts = new Set(processingPrompts);
+        newProcessingPrompts.add(promptData.id);
+        updateProcessingPrompts(newProcessingPrompts);
         
         const processingPrompt = {
           ...promptData,
@@ -217,7 +250,12 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
       socketRef.current.on("new_prompt", (prompt) => {
         console.log("new_prompt received:", prompt);
         
-        setTypingPrompts(prev => new Set(prev).add(prompt.id));
+        // Only start typing if it hasn't been completed yet
+        if (!completedTypingPrompts.has(prompt.id)) {
+          const newTypingPrompts = new Set(typingPrompts);
+          newTypingPrompts.add(prompt.id);
+          updateTypingPrompts(newTypingPrompts);
+        }
         
         setPromptList((prev) => {
           const existingIndex = prev.findIndex(p => p.id === prompt.id);
@@ -244,7 +282,6 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
         });
       });
 
-      // Listen for delete events from other clients
       socketRef.current.on("prompt_deleted", (deletedPromptId) => {
         console.log("prompt_deleted received:", deletedPromptId);
         setPromptList((prev) => prev.filter(prompt => prompt.id !== deletedPromptId));
@@ -259,7 +296,7 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
         socketRef.current = null;
       }
     };
-  }, []);
+  }, [processingPrompts, typingPrompts, completedTypingPrompts]);
 
   return (
     <div
@@ -300,12 +337,11 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
         <div className="p-4 flex-shrink-0">
           <ul className="space-y-2">
             <li>
-              <Link
-                to="/"
-                onClick={onHomeClick}
-                className={`flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group ${
+              <button
+                onClick={handleHomeClick}
+                className={`flex items-center w-full px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group ${
                   isCollapsed ? "justify-center" : "space-x-3"
-                }`}
+                } ${!selectedPromptId ? "bg-gray-50" : ""}`}
               >
                 <Home className="w-5 h-5 text-gray-400 group-hover:text-gray-600 flex-shrink-0" />
                 <span
@@ -315,16 +351,16 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
                 >
                   Home
                 </span>
-              </Link>
+              </button>
             </li>
             <li>
               <a
                 href="#"
-                className={`flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group bg-gray-50 ${
+                className={`flex items-center px-3 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-all duration-300 ease-in-out group ${
                   isCollapsed ? "justify-center" : "space-x-3"
                 }`}
               >
-                <BarChart3 className="w-5 h-5 text-gray-600 flex-shrink-0" />
+                <BarChart3 className="w-5 h-5 text-gray-400 group-hover:text-gray-600 flex-shrink-0" />
                 <span
                   className={`text-sm font-medium transition-all duration-500 ease-in-out overflow-hidden whitespace-nowrap ${
                     isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
@@ -367,8 +403,9 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
             <ul className="space-y-1 pb-4">
               {uniquePromptList.map((item) => {
                 const isProcessing = processingPrompts.has(item.id) || item.isProcessing;
-                const isTyping = typingPrompts.has(item.id);
+                const isTyping = typingPrompts.has(item.id) && !completedTypingPrompts.has(item.id);
                 const isDeleting = deletingPrompts.has(item.id);
+                const isSelected = selectedPromptId === item.id;
                 const displayText = item.message.slice(0, 30) + (item.message.length > 30 ? "..." : "");
                 
                 return (
@@ -384,6 +421,8 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
                         } ${
                           isProcessing || isDeleting
                             ? "text-gray-400 bg-gray-50 cursor-not-allowed" 
+                            : isSelected
+                            ? "text-blue-700 bg-blue-50 border border-blue-200"
                             : "text-gray-700 hover:bg-gray-100"
                         } ${!isCollapsed ? "pr-8" : ""}`}
                       >
@@ -392,7 +431,9 @@ const Sidebar = ({ onSelectPrompt, onHomeClick }) => {
                         ) : isDeleting ? (
                           <Loader2 className="w-4 h-4 text-red-400 flex-shrink-0 animate-spin" />
                         ) : (
-                          <MessageSquareText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <MessageSquareText className={`w-4 h-4 flex-shrink-0 ${
+                            isSelected ? 'text-blue-500' : 'text-gray-400'
+                          }`} />
                         )}
                         {!isCollapsed && (
                           <div className="flex-1 min-w-0 text-left">
