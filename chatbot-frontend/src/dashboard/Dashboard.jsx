@@ -27,7 +27,7 @@ const TypingText = ({ text, isTyping, onComplete }) => {
 
           return newIndex;
         });
-      }, 30); 
+      }, 30);
     } else {
       setDisplayText(text);
     }
@@ -49,7 +49,12 @@ const TypingText = ({ text, isTyping, onComplete }) => {
   );
 };
 
-const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarTypingPrompts }) => {
+const Dashboard = ({
+  selectedChat,
+  onNewChat,
+  sidebarProcessingPrompts,
+  sidebarTypingPrompts,
+}) => {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
@@ -58,15 +63,19 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
   const [dashboardIsBusy, setDashboardIsBusy] = useState(false);
 
   const isAnyMessageTyping = typingMessages.size > 0;
-  const isSidebarProcessing = sidebarProcessingPrompts.size > 0 || sidebarTypingPrompts.size > 0;
-  const isSystemBusy = dashboardIsBusy || isAnyMessageTyping || isSidebarProcessing;
+  const isSidebarProcessing =
+    sidebarProcessingPrompts.size > 0 || sidebarTypingPrompts.size > 0;
+  const isSystemBusy =
+    dashboardIsBusy || isAnyMessageTyping || isSidebarProcessing;
 
   useEffect(() => {
     if (selectedChat?.conversation_id) {
       setConversationId(selectedChat.conversation_id);
 
       axios
-        .get(`http://localhost:3000/chat/conversation/${selectedChat.conversation_id}`)
+        .get(
+          `http://localhost:3000/chat/conversation/${selectedChat.conversation_id}`
+        )
         .then((res) => {
           const fullChat = res.data
             .map((chat) => [
@@ -81,14 +90,14 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
                 content: chat.reply,
                 timestamp: new Date(chat.created_at),
                 id: `bot-${chat.id}`,
-                isTyping: false, 
+                isTyping: false,
               },
             ])
             .flat();
 
           setChatHistory(fullChat);
         })
-        .catch(err => console.error('Error loading chat history:', err));
+        .catch((err) => console.error("Error loading chat history:", err));
     } else {
       setConversationId(null);
       setChatHistory([]);
@@ -111,7 +120,7 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
 
   const handleSend = async () => {
     if (!message.trim()) return;
-    
+
     if (isSystemBusy) {
       return;
     }
@@ -124,14 +133,14 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
       timestamp: new Date(),
       id: `user-${Date.now()}`,
     };
-    
+
     const currentMessage = message;
     setMessage("");
-    
+
     setChatHistory((prev) => [...prev, userMessage]);
 
     setLoading(true);
-    
+
     try {
       const res = await axios.post("http://localhost:3000/chat", {
         message: currentMessage,
@@ -143,15 +152,15 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
       }
 
       const botMessageId = `bot-${Date.now()}`;
-      
+
       setTypingMessages((prev) => new Set(prev).add(botMessageId));
-      
+
       const botMessage = {
         type: "bot",
         content: res.data.reply,
         timestamp: new Date(),
         id: botMessageId,
-        isTyping: true, 
+        isTyping: true,
       };
 
       setChatHistory((prev) => [...prev, botMessage]);
@@ -164,9 +173,8 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
           conversation_id: res.data.conversation_id,
         });
       }
-      
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("Error sending message:", error);
       const errorMessage = {
         type: "bot",
         content: "Something went wrong!",
@@ -217,35 +225,27 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
 
   return (
     <div className="flex-1 bg-gray-50 h-screen flex flex-col overflow-hidden">
-      {/* Fixed Header */}
       <div className="bg-white border-b border-gray-200 px-8 py-6 flex-shrink-0">
         <div className="flex items-center space-x-3">
           <div className="relative w-9 h-11 bg-gradient-to-b from-gray-800 rounded-lg flex items-center justify-center border border-gray-600 shadow-lg">
-            {/* Central sparkle behind the icon */}
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-1.5 h-1.5 bg-white rounded-full opacity-0 animate-pulse"></div>
             </div>
 
-            {/* Top cap with handle */}
             <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-5 h-1 bg-gray-900 rounded-t border border-gray-600"></div>
 
-            {/* Hanging ring */}
             <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-2.5 h-0.5 border border-gray-600 rounded-full border-b-0"></div>
 
-            {/* Window frame - more lantern-like */}
             <div className="absolute inset-1 border border-gray-600 rounded-md opacity-40"></div>
 
-            {/* Vertical bars */}
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-0.5 h-7 bg-gray-600 opacity-50"></div>
             </div>
             <div className="absolute left-2 top-1.5 w-0.5 h-7 bg-gray-600 opacity-30"></div>
             <div className="absolute right-2 top-1.5 w-0.5 h-7 bg-gray-600 opacity-30"></div>
 
-            {/* Sparkles icon */}
             <Sparkles className="w-4 h-4 text-white relative z-10 drop-shadow-lg" />
 
-            {/* Bottom cap */}
             <div className="absolute -bottom-0.5 left-1/2 transform -translate-x-1/2 w-6 h-1 bg-gray-900 rounded-b border border-gray-600"></div>
           </div>
           <div>
@@ -257,9 +257,7 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
         </div>
       </div>
 
-      {/* Main Content Area - Scrollable */}
       <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full p-6 overflow-hidden">
-        {/* Messages Area - Scrollable */}
         <div className="flex-1 overflow-y-auto space-y-6 mb-6 pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
           {chatHistory.length === 0 ? (
             <div className="text-center py-16">
@@ -289,7 +287,6 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
                       : ""
                   }`}
                 >
-                  {/* Avatar */}
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                       msg.type === "user"
@@ -304,7 +301,6 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
                     )}
                   </div>
 
-                  {/* Message */}
                   <div
                     className={`px-4 py-3 rounded-2xl shadow-sm ${
                       msg.type === "user"
@@ -365,14 +361,13 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
           )}
         </div>
 
-        {/* Fixed Input Area */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 flex-shrink-0">
           <div className="flex items-end space-x-3">
             <div className="flex-1 relative">
               <textarea
                 rows="1"
                 className={`w-full resize-none border-0 bg-transparent focus:outline-none placeholder-gray-500 text-gray-900 text-sm leading-relaxed ${
-                  isSystemBusy ? 'opacity-50' : ''
+                  isSystemBusy ? "opacity-50" : ""
                 }`}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
@@ -391,15 +386,15 @@ const Dashboard = ({ selectedChat, onNewChat, sidebarProcessingPrompts, sidebarT
             </button>
           </div>
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-            <p className="text-xs text-gray-500">
-              {getStatusMessage()}
-            </p>
+            <p className="text-xs text-gray-500">{getStatusMessage()}</p>
             <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${
-                isSystemBusy ? 'bg-yellow-500' : 'bg-green-500'
-              }`}></div>
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  isSystemBusy ? "bg-yellow-500" : "bg-green-500"
+                }`}
+              ></div>
               <span className="text-xs text-gray-500">
-                {isSystemBusy ? 'Busy...' : 'Ready'}
+                {isSystemBusy ? "Busy..." : "Ready"}
               </span>
             </div>
           </div>
